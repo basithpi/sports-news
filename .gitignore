@@ -1,0 +1,74 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Virtual environments
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+.env
+
+# 🔐 SENSITIVE FILES - DO NOT COMMIT
+# Google OAuth credentials
+client_secret.json
+token.json
+
+# Local state files
+.sports_shorts_state.json
+
+# Generated output (keep .gitkeep to preserve directory)
+output/*
+!output/.gitkeep
+
+# Temporary files
+*.tmp
+*.log
+*.temp
+
+# IDE specific
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Local development
+.env.local
+secrets.json
+
+# Video files (if generated locally, optional)
+*.mp4
+*.mkv
+*.avi
