@@ -351,6 +351,30 @@ def require_tools(render: bool, upload_youtube: bool = False) -> None:
         raise SystemExit("YouTube upload dependencies are missing. Run: pip install -r requirements.txt")
 
 
+def validate_daily_time(time_str: str) -> None:
+    """Validate that time_str is in HH:MM 24-hour format."""
+    try:
+        parts = time_str.split(":")
+        if len(parts) != 2:
+            raise ValueError("Invalid format")
+        hour = int(parts[0])
+        minute = int(parts[1])
+        if not (0 <= hour <= 23) or not (0 <= minute <= 59):
+            raise ValueError("Invalid time values")
+    except (ValueError, AttributeError):
+        raise SystemExit(f"--daily-time must be in HH:MM 24-hour format (e.g., 08:00), got: {time_str}")
+
+
+def next_daily_run_time(time_str: str) -> datetime:
+    """Calculate next run time for daily loop based on HH:MM time string."""
+    now = datetime.now()
+    hour, minute = map(int, time_str.split(":"))
+    next_run = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if next_run <= now:
+        next_run += timedelta(days=1)
+    return next_run
+
+
 def load_pipeline_state(path: Path) -> dict:
     if not path.exists():
         return json.loads(json.dumps(DEFAULT_STATE))
@@ -392,7 +416,7 @@ def file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def filter_previously_uploaded_packages(packages: list[ShortPackage], state: dict) -> list[ShortPackage]:
+def filter_previously_uploaded_packages(packages: list[ShortPackage], state: dict, dedupe_scope: str = "same-day") -> list[ShortPackage]:
     filtered: list[ShortPackage] = []
     for package in packages:
         video_path = Path(package.video_file)
@@ -407,7 +431,7 @@ def filter_previously_uploaded_packages(packages: list[ShortPackage], state: dic
     return filtered
 
 
-def record_generated_topics(state: dict, packages: list[ShortPackage]) -> None:
+def record_generated_topics(state: dict, packages: list[ShortPackage], dedupe_scope: str = "same-day") -> None:
     now = datetime.now(timezone.utc).isoformat()
     for package in packages:
         key = package_topic_key(package)
@@ -416,7 +440,7 @@ def record_generated_topics(state: dict, packages: list[ShortPackage]) -> None:
             state.setdefault("source_urls", {})[package.source_url] = {"title": package.video_title, "seen_at": now}
 
 
-def record_successful_run(state: dict, packages: list[ShortPackage], uploads: list[YouTubeUpload]) -> None:
+def record_successful_run(state: dict, packages: list[ShortPackage], uploads: list[YouTubeUpload], dedupe_scope: str = "same-day") -> None:
     now = datetime.now(timezone.utc).isoformat()
     upload_by_file = {Path(upload.local_file).resolve(): upload for upload in uploads}
     for package in packages:
@@ -811,7 +835,7 @@ def score_item(title: str, summary: str, published_ts: float, sport: str) -> flo
     return score
 
 
-def select_topics(items: list[NewsItem], count: int, state: dict | None = None) -> list[NewsItem]:
+def select_topics(items: list[NewsItem], count: int, state: dict | None = None, dedupe_scope: str = "same-day") -> list[NewsItem]:
     selected: list[NewsItem] = []
     seen_domains: dict[str, int] = {}
     seen_entities: set[str] = set()
