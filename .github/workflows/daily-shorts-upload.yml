@@ -40,6 +40,7 @@ jobs:
           python << 'PYTHON_EOF'
           import os
           import json
+          import re
           
           creds_raw = os.environ.get('GOOGLE_CREDENTIALS', '')
           
@@ -51,78 +52,38 @@ jobs:
               # Try parsing as-is first
               parsed = json.loads(creds_raw)
           except json.JSONDecodeError:
-              # GitHub secrets corrupted JSON - manually rebuild it
-              # Parse the unquoted JSON carefully to handle types correctly
-              import re
-              text = creds_raw.strip()
-              result = {}
+              # GitHub corrupted the JSON by removing quotes
+              # Use regex to add quotes back around keys and values
+              text = creds_raw
               
-              # Extract the inner object if wrapped in {installed:{...}}
-              if '{installed:' in text:
-                  inner_start = text.index('{', text.index('{') + 1)
-                  inner_end = text.rfind('}') - 1
-                  inner_text = text[inner_start+1:inner_end]
-                  
-                  # Parse key:value pairs carefully
-                  pairs = []
-                  current_pair = ""
-                  in_url = False
-                  in_array = False
-                  bracket_depth = 0
-                  
-                  for i, char in enumerate(inner_text):
-                      if char == '[':
-                          in_array = True
-                          bracket_depth += 1
-                          current_pair += char
-                      elif char == ']':
-                          bracket_depth -= 1
-                          current_pair += char
-                          if bracket_depth == 0:
-                              in_array = False
-                      elif char == ':' and not in_url and not in_array:
-                          current_pair += char
-                          in_url = current_pair.endswith('https:') or current_pair.endswith('http:')
-                      elif char == ',' and not in_url and not in_array:
-                          pairs.append(current_pair.strip())
-                          current_pair = ""
-                          in_url = False
-                      else:
-                          current_pair += char
-                          if current_pair.endswith('//'):
-                              in_url = True
-                  
-                  if current_pair.strip():
-                      pairs.append(current_pair.strip())
-                  
-                  # Parse each pair, respecting types
-                  for pair in pairs:
-                      if ':' not in pair:
-                          continue
-                      key, val = pair.split(':', 1)
-                      key = key.strip()
-                      val = val.strip()
-                      
-                      # Handle arrays
-                      if val.startswith('[') and val.endswith(']'):
-                          # Parse array
-                          array_content = val[1:-1]
-                          items = [item.strip().strip('"') for item in array_content.split(',')]
-                          result[key] = items
-                      else:
-                          result[key] = val
+              # Replace {key: with {"key": - match word characters
+              text = re.sub(r'\{(\w+):', r'{"\\1":', text)
+              # Replace ,key: with ,"key": 
+              text = re.sub(r',(\w+):', r',"\1":', text)
               
-              parsed = {'installed': result}
+              # Now quote string values that aren't quoted
+              # Value can be: URL, string, or array
+              # URL pattern: https://... or http://...
+              # Array pattern: [...]
+              # String pattern: anything else until comma or }
+              
+              # Quote URLs that aren't already quoted
+              text = re.sub(r':(https?://[^,}]+)([,}])', r':"\1"\2', text)
+              # Quote strings like localhost, emails, etc
+              text = re.sub(r':([a-zA-Z][a-zA-Z0-9_.-]*[,}])', r':"\1', text)
+              # Fix arrays if they exist
+              text = re.sub(r':\[([^\]]+)\]([,}])', r':["\1"]\2', text)
+              
+              # Clean up any double quotes
+              text = text.replace('\\"', '"')
+              
+              parsed = json.loads(text)
           
           # Write to file
           with open('client_secret.json', 'w') as f:
               json.dump(parsed, f)
           
-          # Verify and print structure
-          with open('client_secret.json') as f:
-              written = json.load(f)
-              print("Created client_secret.json with structure:")
-              print(json.dumps(written, indent=2)[:500])
+          print("✓ Credentials created successfully")
           PYTHON_EOF
 
       - name: Restore OAuth token
