@@ -539,8 +539,28 @@ def build_youtube_client(client_secrets: Path, token_file: Path):
         if creds and creds.expired and creds.refresh_token:
             creds.refresh(GoogleAuthRequest())
         else:
+            # Check if we're in a headless environment (GitHub Actions, Docker, etc.)
+            import os
+            is_headless = os.environ.get('CI') == 'true' or os.environ.get('GITHUB_ACTIONS') == 'true'
+            
             flow = InstalledAppFlow.from_client_secrets_file(str(client_secrets), YOUTUBE_UPLOAD_SCOPE)
-            creds = flow.run_local_server(port=0)
+            
+            if is_headless:
+                # In headless environments, we can't open a browser
+                # Provide the authorization URL for manual authorization
+                auth_url, state = flow.authorization_url()
+                raise RuntimeError(
+                    f"YouTube authorization required in GitHub Actions!\n"
+                    f"This is the first time running in this environment.\n"
+                    f"Please authorize manually:\n"
+                    f"1. Run locally first: python sports_shorts_pipeline.py --count 1\n"
+                    f"2. Commit the generated token.json to GitHub\n"
+                    f"3. Then GitHub Actions will use that token for uploads\n"
+                    f"\nAuthorization URL: {auth_url}"
+                )
+            else:
+                # Local mode with browser available
+                creds = flow.run_local_server(port=0)
         token_file.write_text(creds.to_json(), encoding="utf-8")
     return build_google_service("youtube", "v3", credentials=creds)
 
