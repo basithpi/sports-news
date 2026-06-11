@@ -35,10 +35,10 @@ jobs:
 
       - name: Create credentials file
         run: |
-          # Decode base64 secret and write to file
-          echo '${{ secrets.GOOGLE_CLIENT_SECRET_B64 }}' | base64 -d > client_secret.json
+          # Decode base64 secret using Python
+          python -c "import base64; import sys; data = sys.argv[1]; decoded = base64.b64decode(data).decode('utf-8'); open('client_secret.json', 'w').write(decoded)" '${{ secrets.GOOGLE_CLIENT_SECRET_B64 }}'
           # Verify the file is valid JSON
-          python -c "import json; json.load(open('client_secret.json'))" && echo "✓ Credentials valid" || (echo "ERROR: Invalid JSON in credentials"; exit 1)
+          python -c "import json; json.load(open('client_secret.json')); print('✓ Credentials valid')" || (echo "ERROR: Invalid JSON in credentials"; exit 1)
 
       - name: Restore OAuth token
         uses: actions/download-artifact@v4
