@@ -35,55 +35,32 @@ jobs:
 
       - name: Create credentials file
         env:
-          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          GOOGLE_CREDENTIALS_B64: ${{ secrets.GOOGLE_CLIENT_SECRET }}
         run: |
-          python << 'PYTHON_EOF'
+          python3 << 'PYTHON_EOF'
           import os
           import json
-          import re
+          import base64
           
-          creds_raw = os.environ.get('GOOGLE_CREDENTIALS', '')
+          creds_b64 = os.environ.get('GOOGLE_CREDENTIALS_B64', '')
           
-          if not creds_raw:
+          if not creds_b64:
               print("ERROR: No credentials in environment")
               exit(1)
           
           try:
-              # Try parsing as-is first
-              parsed = json.loads(creds_raw)
-          except json.JSONDecodeError:
-              # GitHub corrupted the JSON by removing quotes
-              # Use regex to add quotes back around keys and values
-              text = creds_raw
+              # Decode from base64
+              creds_json = base64.b64decode(creds_b64).decode('utf-8')
+              credentials = json.loads(creds_json)
               
-              # Replace {key: with {"key": - match word characters
-              text = re.sub(r'\{(\w+):', r'{"\\1":', text)
-              # Replace ,key: with ,"key": 
-              text = re.sub(r',(\w+):', r',"\1":', text)
+              # Write to file
+              with open('client_secret.json', 'w') as f:
+                  json.dump(credentials, f)
               
-              # Now quote string values that aren't quoted
-              # Value can be: URL, string, or array
-              # URL pattern: https://... or http://...
-              # Array pattern: [...]
-              # String pattern: anything else until comma or }
-              
-              # Quote URLs that aren't already quoted
-              text = re.sub(r':(https?://[^,}]+)([,}])', r':"\1"\2', text)
-              # Quote strings like localhost, emails, etc
-              text = re.sub(r':([a-zA-Z][a-zA-Z0-9_.-]*[,}])', r':"\1', text)
-              # Fix arrays if they exist
-              text = re.sub(r':\[([^\]]+)\]([,}])', r':["\1"]\2', text)
-              
-              # Clean up any double quotes
-              text = text.replace('\\"', '"')
-              
-              parsed = json.loads(text)
-          
-          # Write to file
-          with open('client_secret.json', 'w') as f:
-              json.dump(parsed, f)
-          
-          print("✓ Credentials created successfully")
+              print("✓ Credentials file created successfully")
+          except Exception as e:
+              print(f"ERROR: Failed to create credentials: {e}")
+              exit(1)
           PYTHON_EOF
 
       - name: Restore OAuth token
