@@ -34,25 +34,13 @@ jobs:
           sudo apt-get install -y ffmpeg
 
       - name: Create credentials file
+        env:
+          GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CLIENT_SECRET }}
         run: |
-          cat > decode_credentials.py << 'EOF'
-          import base64
-          import json
-          
-          secret_b64 = """${{ secrets.GOOGLE_CLIENT_SECRET_B64 }}"""
-          
-          try:
-              decoded = base64.b64decode(secret_b64).decode('utf-8')
-              with open('client_secret.json', 'w') as f:
-                  f.write(decoded)
-              # Verify it's valid JSON
-              json.load(open('client_secret.json'))
-              print("✓ Credentials file created and validated")
-          except Exception as e:
-              print(f"ERROR: {e}")
-              exit(1)
-          EOF
-          python decode_credentials.py
+          # Write the secret directly from environment variable
+          echo "$GOOGLE_CREDENTIALS" > client_secret.json
+          # Verify it's valid JSON
+          python -c "import json; json.load(open('client_secret.json')); print('✓ Credentials valid')"
 
       - name: Restore OAuth token
         uses: actions/download-artifact@v4
