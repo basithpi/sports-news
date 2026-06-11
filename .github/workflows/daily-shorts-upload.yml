@@ -35,10 +35,24 @@ jobs:
 
       - name: Create credentials file
         run: |
-          # Decode base64 secret using Python
-          python -c "import base64; import sys; data = sys.argv[1]; decoded = base64.b64decode(data).decode('utf-8'); open('client_secret.json', 'w').write(decoded)" '${{ secrets.GOOGLE_CLIENT_SECRET_B64 }}'
-          # Verify the file is valid JSON
-          python -c "import json; json.load(open('client_secret.json')); print('✓ Credentials valid')" || (echo "ERROR: Invalid JSON in credentials"; exit 1)
+          cat > decode_credentials.py << 'EOF'
+          import base64
+          import json
+          
+          secret_b64 = """${{ secrets.GOOGLE_CLIENT_SECRET_B64 }}"""
+          
+          try:
+              decoded = base64.b64decode(secret_b64).decode('utf-8')
+              with open('client_secret.json', 'w') as f:
+                  f.write(decoded)
+              # Verify it's valid JSON
+              json.load(open('client_secret.json'))
+              print("✓ Credentials file created and validated")
+          except Exception as e:
+              print(f"ERROR: {e}")
+              exit(1)
+          EOF
+          python decode_credentials.py
 
       - name: Restore OAuth token
         uses: actions/download-artifact@v4
