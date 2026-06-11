@@ -118,14 +118,11 @@ jobs:
           with open('client_secret.json', 'w') as f:
               json.dump(parsed, f)
           
-          # Verify
+          # Verify and print structure
           with open('client_secret.json') as f:
               written = json.load(f)
-              if 'installed' in written and 'redirect_uris' in written['installed']:
-                  if isinstance(written['installed']['redirect_uris'], list):
-                      print("✓ Credentials valid: redirect_uris is a list")
-                  else:
-                      print(f"⚠ WARNING: redirect_uris is {type(written['installed']['redirect_uris'])}")
+              print("Created client_secret.json with structure:")
+              print(json.dumps(written, indent=2)[:500])
           PYTHON_EOF
 
       - name: Restore OAuth token
