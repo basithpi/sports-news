@@ -41,21 +41,34 @@ jobs:
           import os
           import json
           
-          creds = os.environ.get('GOOGLE_CREDENTIALS', '')
-          if not creds:
+          # Get raw secret
+          creds_raw = os.environ.get('GOOGLE_CREDENTIALS', '')
+          
+          if not creds_raw:
               print("ERROR: No credentials in environment")
               exit(1)
           
           try:
-              # Verify it's valid JSON
-              parsed = json.loads(creds)
+              # Try parsing as-is first
+              try:
+                  parsed = json.loads(creds_raw)
+              except json.JSONDecodeError:
+                  # If that fails, it might have unescaped quotes
+                  # Add them back manually
+                  import re
+                  # Replace single-key patterns like {installed:{ with {"installed":{
+                  fixed = creds_raw
+                  fixed = re.sub(r'\{(\w+):', r'{"\\1":', fixed)
+                  fixed = re.sub(r',(\w+):', r',"\1":', fixed)
+                  parsed = json.loads(fixed)
+              
               # Write to file
               with open('client_secret.json', 'w') as f:
                   json.dump(parsed, f)
               print("✓ Credentials file created and validated")
           except Exception as e:
               print(f"ERROR: {e}")
-              print(f"Got: {creds[:100]}")
+              print(f"Got (first 200 chars): {creds_raw[:200]}")
               exit(1)
           PYTHON_EOF
 
