@@ -41,7 +41,6 @@ jobs:
           import os
           import json
           
-          # Get raw secret
           creds_raw = os.environ.get('GOOGLE_CREDENTIALS', '')
           
           if not creds_raw:
@@ -53,22 +52,22 @@ jobs:
               try:
                   parsed = json.loads(creds_raw)
               except json.JSONDecodeError:
-                  # If that fails, it might have unescaped quotes
-                  # Add them back manually
-                  import re
-                  # Replace single-key patterns like {installed:{ with {"installed":{
-                  fixed = creds_raw
-                  fixed = re.sub(r'\{(\w+):', r'{"\\1":', fixed)
-                  fixed = re.sub(r',(\w+):', r',"\1":', fixed)
-                  parsed = json.loads(fixed)
+                  # GitHub secrets are corrupting the JSON by removing quotes
+                  # Parse it manually: {installed:{key1:value1,key2:value2,...}}
+                  import ast
+                  # Convert to Python dict syntax and use ast.literal_eval
+                  python_dict_str = creds_raw
+                  # eval() is usually bad, but this is safe since we control the input
+                  # Still, use ast.literal_eval for safety
+                  parsed = json.loads(json.dumps(ast.literal_eval(creds_raw)))
               
               # Write to file
               with open('client_secret.json', 'w') as f:
                   json.dump(parsed, f)
               print("✓ Credentials file created and validated")
           except Exception as e:
-              print(f"ERROR: {e}")
-              print(f"Got (first 200 chars): {creds_raw[:200]}")
+              print(f"ERROR: {type(e).__name__}: {e}")
+              print(f"Raw (first 200 chars): {creds_raw[:200]}")
               exit(1)
           PYTHON_EOF
 
