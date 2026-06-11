@@ -40,6 +40,7 @@ jobs:
           python << 'PYTHON_EOF'
           import os
           import json
+          import re
           
           creds_raw = os.environ.get('GOOGLE_CREDENTIALS', '')
           
@@ -52,14 +53,27 @@ jobs:
               try:
                   parsed = json.loads(creds_raw)
               except json.JSONDecodeError:
-                  # GitHub secrets are corrupting the JSON by removing quotes
-                  # Parse it manually: {installed:{key1:value1,key2:value2,...}}
-                  import ast
-                  # Convert to Python dict syntax and use ast.literal_eval
-                  python_dict_str = creds_raw
-                  # eval() is usually bad, but this is safe since we control the input
-                  # Still, use ast.literal_eval for safety
-                  parsed = json.loads(json.dumps(ast.literal_eval(creds_raw)))
+                  # GitHub secrets corrupted the JSON by removing quotes
+                  # Fix it by adding quotes around keys and string values
+                  fixed = creds_raw
+                  
+                  # First, add quotes around all unquoted dictionary keys
+                  # Pattern: {key: or ,key: becomes {"key": or ,"key":
+                  fixed = re.sub(r'\{([a-zA-Z_][a-zA-Z0-9_]*?):', r'{"\\1":', fixed)
+                  fixed = re.sub(r',([a-zA-Z_][a-zA-Z0-9_]*?):', r',"\1":', fixed)
+                  
+                  # Now fix values: add quotes around string values that aren't already quoted
+                  # Match :value, or :value} patterns where value is unquoted
+                  # String values: anything that's not a number or special char
+                  fixed = re.sub(r':([a-zA-Z_][a-zA-Z0-9_.-]*[,}])', r':"\\1', fixed)  # key names as values
+                  fixed = re.sub(r':([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+[,}])', r':"\\1', fixed)  # emails
+                  fixed = re.sub(r':(https?://[^,}]+)([,}])', r':"\1"\2', fixed)  # URLs
+                  
+                  # Remove any accidental double backslashes
+                  fixed = fixed.replace('\\\\"', '"')
+                  
+                  # Parse the fixed JSON
+                  parsed = json.loads(fixed)
               
               # Write to file
               with open('client_secret.json', 'w') as f:
@@ -67,7 +81,7 @@ jobs:
               print("✓ Credentials file created and validated")
           except Exception as e:
               print(f"ERROR: {type(e).__name__}: {e}")
-              print(f"Raw (first 200 chars): {creds_raw[:200]}")
+              print(f"Raw (first 300 chars): {creds_raw[:300]}")
               exit(1)
           PYTHON_EOF
 
