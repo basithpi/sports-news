@@ -40,7 +40,6 @@ jobs:
           python << 'PYTHON_EOF'
           import os
           import json
-          import re
           
           creds_raw = os.environ.get('GOOGLE_CREDENTIALS', '')
           
@@ -50,39 +49,69 @@ jobs:
           
           try:
               # Try parsing as-is first
+              parsed = json.loads(creds_raw)
+          except json.JSONDecodeError:
+              # GitHub secrets corrupted JSON - manually rebuild it
               try:
-                  parsed = json.loads(creds_raw)
-              except json.JSONDecodeError:
-                  # GitHub secrets corrupted the JSON by removing quotes
-                  # Fix it by adding quotes around keys and string values
-                  fixed = creds_raw
+                  # Parse the unquoted JSON manually by splitting on commas and colons
+                  # Convert {key1:val1,key2:val2} to {"key1":"val1","key2":"val2"}
                   
-                  # First, add quotes around all unquoted dictionary keys
-                  # Pattern: {key: or ,key: becomes {"key": or ,"key":
-                  fixed = re.sub(r'\{([a-zA-Z_][a-zA-Z0-9_]*?):', r'{"\\1":', fixed)
-                  fixed = re.sub(r',([a-zA-Z_][a-zA-Z0-9_]*?):', r',"\1":', fixed)
+                  # Step 1: Find all key:value pairs
+                  import re
+                  # Remove spaces and handle the structure
+                  text = creds_raw.strip()
                   
-                  # Now fix values: add quotes around string values that aren't already quoted
-                  # Match :value, or :value} patterns where value is unquoted
-                  # String values: anything that's not a number or special char
-                  fixed = re.sub(r':([a-zA-Z_][a-zA-Z0-9_.-]*[,}])', r':"\\1', fixed)  # key names as values
-                  fixed = re.sub(r':([a-zA-Z0-9._-]+@[a-zA-Z0-9._-]+[,}])', r':"\\1', fixed)  # emails
-                  fixed = re.sub(r':(https?://[^,}]+)([,}])', r':"\1"\2', fixed)  # URLs
+                  # Build a proper JSON by inserting quotes strategically
+                  result = {}
                   
-                  # Remove any accidental double backslashes
-                  fixed = fixed.replace('\\\\"', '"')
+                  # Extract the inner object if wrapped in {installed:{...}}
+                  if '{installed:' in text:
+                      # Handle nested structure
+                      inner_start = text.index('{', text.index('{') + 1)  # find 2nd {
+                      inner_end = text.rfind('}') - 1  # find 2nd to last }
+                      inner_text = text[inner_start+1:inner_end]
+                      
+                      # Parse inner key:value pairs
+                      # Split carefully to handle values with colons (URLs)
+                      pairs = []
+                      current_pair = ""
+                      depth = 0
+                      in_url = False
+                      
+                      for char in inner_text:
+                          if char == ':' and not in_url:
+                              current_pair += char
+                              in_url = current_pair.endswith('https:') or current_pair.endswith('http:')
+                          elif char == ',' and not in_url:
+                              pairs.append(current_pair.strip())
+                              current_pair = ""
+                              in_url = False
+                          else:
+                              current_pair += char
+                              if current_pair.endswith('//'):
+                                  in_url = True
+                      
+                      if current_pair.strip():
+                          pairs.append(current_pair.strip())
+                      
+                      # Now parse each pair
+                      for pair in pairs:
+                          if ':' not in pair:
+                              continue
+                          key, val = pair.split(':', 1)
+                          key = key.strip()
+                          val = val.strip()
+                          result[key] = val
                   
-                  # Parse the fixed JSON
-                  parsed = json.loads(fixed)
-              
-              # Write to file
-              with open('client_secret.json', 'w') as f:
-                  json.dump(parsed, f)
-              print("✓ Credentials file created and validated")
-          except Exception as e:
-              print(f"ERROR: {type(e).__name__}: {e}")
-              print(f"Raw (first 300 chars): {creds_raw[:300]}")
-              exit(1)
+                  parsed = result
+              except Exception as e2:
+                  print(f"Fallback parsing failed: {e2}")
+                  raise
+          
+          # Write to file
+          with open('client_secret.json', 'w') as f:
+              json.dump(parsed, f)
+          print("✓ Credentials file created and validated")
           PYTHON_EOF
 
       - name: Restore OAuth token
