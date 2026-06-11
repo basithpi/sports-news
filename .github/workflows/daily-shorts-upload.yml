@@ -52,74 +52,80 @@ jobs:
               parsed = json.loads(creds_raw)
           except json.JSONDecodeError:
               # GitHub secrets corrupted JSON - manually rebuild it
-              try:
-                  # Parse the unquoted JSON manually by splitting on commas and colons
-                  # Convert {key1:val1,key2:val2} to {"key1":"val1","key2":"val2"}
+              # Parse the unquoted JSON carefully to handle types correctly
+              import re
+              text = creds_raw.strip()
+              result = {}
+              
+              # Extract the inner object if wrapped in {installed:{...}}
+              if '{installed:' in text:
+                  inner_start = text.index('{', text.index('{') + 1)
+                  inner_end = text.rfind('}') - 1
+                  inner_text = text[inner_start+1:inner_end]
                   
-                  # Step 1: Find all key:value pairs
-                  import re
-                  # Remove spaces and handle the structure
-                  text = creds_raw.strip()
+                  # Parse key:value pairs carefully
+                  pairs = []
+                  current_pair = ""
+                  in_url = False
+                  in_array = False
+                  bracket_depth = 0
                   
-                  # Build a proper JSON by inserting quotes strategically
-                  result = {}
-                  
-                  # Extract the inner object if wrapped in {installed:{...}}
-                  if '{installed:' in text:
-                      # Handle nested structure
-                      inner_start = text.index('{', text.index('{') + 1)  # find 2nd {
-                      inner_end = text.rfind('}') - 1  # find 2nd to last }
-                      inner_text = text[inner_start+1:inner_end]
-                      
-                      # Parse inner key:value pairs
-                      # Split carefully to handle values with colons (URLs)
-                      pairs = []
-                      current_pair = ""
-                      depth = 0
-                      in_url = False
-                      
-                      for char in inner_text:
-                          if char == ':' and not in_url:
-                              current_pair += char
-                              in_url = current_pair.endswith('https:') or current_pair.endswith('http:')
-                          elif char == ',' and not in_url:
-                              pairs.append(current_pair.strip())
-                              current_pair = ""
-                              in_url = False
-                          else:
-                              current_pair += char
-                              if current_pair.endswith('//'):
-                                  in_url = True
-                      
-                      if current_pair.strip():
+                  for i, char in enumerate(inner_text):
+                      if char == '[':
+                          in_array = True
+                          bracket_depth += 1
+                          current_pair += char
+                      elif char == ']':
+                          bracket_depth -= 1
+                          current_pair += char
+                          if bracket_depth == 0:
+                              in_array = False
+                      elif char == ':' and not in_url and not in_array:
+                          current_pair += char
+                          in_url = current_pair.endswith('https:') or current_pair.endswith('http:')
+                      elif char == ',' and not in_url and not in_array:
                           pairs.append(current_pair.strip())
-                      
-                      # Now parse each pair
-                      for pair in pairs:
-                          if ':' not in pair:
-                              continue
-                          key, val = pair.split(':', 1)
-                          key = key.strip()
-                          val = val.strip()
-                          result[key] = val
+                          current_pair = ""
+                          in_url = False
+                      else:
+                          current_pair += char
+                          if current_pair.endswith('//'):
+                              in_url = True
                   
-                  parsed = {'installed': result}
-              except Exception as e2:
-                  print(f"Fallback parsing failed: {e2}")
-                  raise
+                  if current_pair.strip():
+                      pairs.append(current_pair.strip())
+                  
+                  # Parse each pair, respecting types
+                  for pair in pairs:
+                      if ':' not in pair:
+                          continue
+                      key, val = pair.split(':', 1)
+                      key = key.strip()
+                      val = val.strip()
+                      
+                      # Handle arrays
+                      if val.startswith('[') and val.endswith(']'):
+                          # Parse array
+                          array_content = val[1:-1]
+                          items = [item.strip().strip('"') for item in array_content.split(',')]
+                          result[key] = items
+                      else:
+                          result[key] = val
+              
+              parsed = {'installed': result}
           
           # Write to file
           with open('client_secret.json', 'w') as f:
               json.dump(parsed, f)
           
-          # Debug: Show what was written
-          print("✓ Credentials file created")
+          # Verify
           with open('client_secret.json') as f:
               written = json.load(f)
-              if 'installed' in written and 'client_id' in written['installed']:
-                  print("✓ File contains valid 'installed' structure with client_id")
-              else:
-                  print(f"⚠ WARNING: File structure is {list(written.keys())}")
+              if 'installed' in written and 'redirect_uris' in written['installed']:
+                  if isinstance(written['installed']['redirect_uris'], list):
+                      print("✓ Credentials valid: redirect_uris is a list")
+                  else:
+                      print(f"⚠ WARNING: redirect_uris is {type(written['installed']['redirect_uris'])}")
           PYTHON_EOF
 
       - name: Restore OAuth token
