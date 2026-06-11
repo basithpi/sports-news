@@ -103,7 +103,7 @@ jobs:
                           val = val.strip()
                           result[key] = val
                   
-                  parsed = result
+                  parsed = {'installed': result}
               except Exception as e2:
                   print(f"Fallback parsing failed: {e2}")
                   raise
@@ -111,7 +111,15 @@ jobs:
           # Write to file
           with open('client_secret.json', 'w') as f:
               json.dump(parsed, f)
-          print("✓ Credentials file created and validated")
+          
+          # Debug: Show what was written
+          print("✓ Credentials file created")
+          with open('client_secret.json') as f:
+              written = json.load(f)
+              if 'installed' in written and 'client_id' in written['installed']:
+                  print("✓ File contains valid 'installed' structure with client_id")
+              else:
+                  print(f"⚠ WARNING: File structure is {list(written.keys())}")
           PYTHON_EOF
 
       - name: Restore OAuth token
