@@ -37,10 +37,27 @@ jobs:
         env:
           GOOGLE_CREDENTIALS: ${{ secrets.GOOGLE_CLIENT_SECRET }}
         run: |
-          # Write the secret directly from environment variable
-          echo "$GOOGLE_CREDENTIALS" > client_secret.json
-          # Verify it's valid JSON
-          python -c "import json; json.load(open('client_secret.json')); print('✓ Credentials valid')"
+          python << 'PYTHON_EOF'
+          import os
+          import json
+          
+          creds = os.environ.get('GOOGLE_CREDENTIALS', '')
+          if not creds:
+              print("ERROR: No credentials in environment")
+              exit(1)
+          
+          try:
+              # Verify it's valid JSON
+              parsed = json.loads(creds)
+              # Write to file
+              with open('client_secret.json', 'w') as f:
+                  json.dump(parsed, f)
+              print("✓ Credentials file created and validated")
+          except Exception as e:
+              print(f"ERROR: {e}")
+              print(f"Got: {creds[:100]}")
+              exit(1)
+          PYTHON_EOF
 
       - name: Restore OAuth token
         uses: actions/download-artifact@v4
